@@ -2,7 +2,7 @@ import socket
 import struct
 import numpy
 
-class ArtNet(object):
+class ArtNetBroadcaster(object):
     PORT = 6454  # 0x1936
 
     def __init__(self, port=PORT):
@@ -37,21 +37,5 @@ class ArtNet(object):
         return packet
 
     def send(self, data, universe):
-        #data = [0x05, 0x05, 0x05]*170
-        #data.extend([0,0])
         msg = self._make_message(data, universe)
-        #print("sending data %i" % (universe))
         return self.socket.sendto(msg, ('<broadcast>', self.port))
-        """
-        msg = self._make_message(data, 0)
-        self.socket.sendto(msg, ('<broadcast>', self.port))
-
-        msg = self._make_message(data, 1)
-        self.socket.sendto(msg, ('<broadcast>', self.port))
-
-        msg = self._make_message(data, 2)
-        self.socket.sendto(msg, ('<broadcast>', self.port))
-
-        msg = self._make_message(data, 3)
-        self.socket.sendto(msg, ('<broadcast>', self.port))
-        """

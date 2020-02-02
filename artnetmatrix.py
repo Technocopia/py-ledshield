@@ -1,5 +1,5 @@
 import numpy
-from artnet import ArtNet
+from artnet import ArtNetBroadcaster
 
 LEDS_PER_PIXEL = 3 # This would change if RGBW were supported
 MAX_CHANNEL = 511 #for zero based channels
