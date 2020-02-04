@@ -1,6 +1,6 @@
 from threading import Thread, Lock
 
-class EffectRunner(object):
+class EffectRunner:
     running = False
     effect = None
     effectThread = None
@@ -17,12 +17,12 @@ class EffectRunner(object):
                 print("tick w/ no running!", flush=True)
             else:
                 # grabbing the lock here can cause issues.. need to think of a
-                #way to avoid issues here
-                #with self._lock:
-                    self.effect.tick()
-                    self.tick_count += 1
+                # way to avoid issues here
+                # with self._lock:
+                self.effect.tick()
+                self.tick_count += 1
         print("_run ceasing", flush=True)
-        #with self._lock:
+        # with self._lock:
         #    self.effect.stop()
 
     def stopEffect(self):
@@ -38,7 +38,6 @@ class EffectRunner(object):
         print("lock released - waiting for termination", flush=True)
         self.effectThread.join()
         print("ending")
-
 
     def startEffect(self, effect):
         if(self.effect):

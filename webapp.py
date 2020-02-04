@@ -3,6 +3,7 @@ from server import blueprint
 from effectrunner import EffectRunner
 from effects import airdraw
 
+
 def create_app(config_file):
     app = Flask(__name__)  # Create application object
     app.config.from_pyfile(config_file)  # Configure application with settings file, not strictly necessary

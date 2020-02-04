@@ -5,12 +5,10 @@ from struct import pack, unpack
 
 ARTNET_HEADER = b'Art-Net\x00'
 
-
 def make_artnet_packet(raw_data):
     if unpack('!8s', raw_data[:8])[0] != ARTNET_HEADER:
         return None
     return ArtnetPacket(raw_data)
-
 
 class ArtnetPacket:
     def __init__(self, raw_data):

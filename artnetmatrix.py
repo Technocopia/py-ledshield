@@ -1,5 +1,6 @@
 import numpy
 from artnetbroadcaster import ArtNetBroadcaster
+from artnetreceiver import ArtNetReceiver
 
 LEDS_PER_PIXEL = 3  # This would change if RGBW were supported
 MAX_CHANNEL = 511  # for zero based channels
@@ -22,11 +23,15 @@ MASK_LAYOUT = 0x08
 
 COLOR_ORDER_RGB = 0
 
+MATRIX_MODE_BROADCAST =  0x00
+MATRIX_MODE_RECEIVE = 0x01
 
-class ArtNetMatrix(object):
+class ArtNetMatrix:
     matrix_config = 0x00
 
     offset_rgb = [0, 1, 2]  # RGB target
+
+    mode = MATRIX_MODE_BROADCAST
 
     # will have to change to others if, say GRB were supported
     # offset_rgb = [1,0,2]
@@ -66,7 +71,7 @@ class ArtNetMatrix(object):
        universes[universe][start_channel][offset_rgb[2]] = b
     """
     def __init__(self, dimensions, matrix_config, color_order):
-        self._artnet = None
+        self._broadcaster = None
         self._surface = None
         self.brightness = DEFAULT_BRIGHTNESS
         self.dimensions = dimensions
@@ -76,11 +81,15 @@ class ArtNetMatrix(object):
         self.color_order = color_order
         self._create_pixel_map()
 
+    def setReceiveMode(self, receiver):
+        self.mode = MATRIX_MODE_RECEIVE
+        self.receiver = receiver
+
     @property
-    def artnet(self):
-        if self._artnet is None:
-            self._artnet = ArtNetBroadcaster()
-        return self._artnet
+    def broadcaster(self):
+        if self._broadcaster is None:
+            self._broadcaster = ArtNetBroadcaster()
+        return self._broadcaster
 
     @property
     def surface(self):
@@ -99,7 +108,34 @@ class ArtNetMatrix(object):
     def clear(self):
         return self.fill((0, 0, 0))
 
+    def unpack_universes(self, universes):
+        """ Takes a dict of universe -> bytearray, and a pixel map and fills
+            a surface area w/ the correct colors. returns [x][y][rgb] surface
+            array
+        """
+        outputsurface = numpy.zeros(
+            self.shape + (LEDS_PER_PIXEL,)
+        ).astype('uint8')
+
+        roff, goff, boff = self.offset_rgb
+
+        # this is probably a better way, but whatev
+        #for universe, data in universes:
+
+        for y, x in numpy.ndindex(self.shape):
+            universe, start_channel = [int(i) for i in self.pixel_map[y, x]]
+
+            # TODO: take roff, boff, goff into account to reorder colors to rgb
+            c1, c2, c3 = universes[universe][start_channel:start_channel+LEDS_PER_PIXEL]
+
+            outputsurface[y,x] = c3,c2,c1
+
+        return outputsurface
+
     def prepare_universes(self):
+        """ Takes the surface object and a pixel map and creates output
+            buffers, one for each universe, containing pixel data
+        """
         max_universe = self.pixel_map[:, :, 0].max()
         universe_buffers = numpy.zeros((int(max_universe+1), 512))
         roff, goff, boff = self.offset_rgb
@@ -117,11 +153,10 @@ class ArtNetMatrix(object):
             # universe_buffers[universe][start_ch:start_ch+LEDS_PER_PIXEL]
         return universe_buffers
 
-    def update(self):
-        for i, data in enumerate(self.prepare_universes()):
-            self.artnet.send(data, i)
-
     def _create_pixel_map(self):
+        """ creates a mapping of dmx channel to surface area
+            TODO: make pixel map a class
+        """
         if not self.color_order == COLOR_ORDER_RGB:
             raise ValueError("only rgb color order supported currently")
         start_pixel = self.matrix_config & MASK_START_PIXEL
@@ -151,3 +186,27 @@ class ArtNetMatrix(object):
             y_dir *= -1
             y = 0 if y_dir > 0 else max_y
             x = x-1 if (x_dir < 0) else (x+1)
+
+    def receiveFrame(self):
+        if self.mode != MATRIX_MODE_RECEIVE:
+            raise TypeError("Matrix is not in receive mode")
+        universes = {}
+        max_universe = self.pixel_map[:, :, 0].max()
+
+        while len(universes.keys()) <= max_universe:
+            packet = self.receiver.receive()
+            if packet:
+                #if len(u_c.keys()) < 3:
+                #print(packet.data[0:2])
+                #else:
+                #    return
+                universes[packet.universe] = packet.data
+        return self.unpack_universes(universes)
+
+    def update(self):
+        """ Sends the surface out over the wire if we are in broadcase mode """
+        if self.mode != MATRIX_MODE_BROADCAST:
+            raise TypeError("Matrix is not in broadcast mode")
+
+        for i, data in enumerate(self.prepare_universes()):
+            self.broadcaster.send(data, i)
