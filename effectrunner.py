@@ -1,10 +1,12 @@
 from threading import Thread, Lock
 
+
 class EffectRunner:
     running = False
     effect = None
     effectThread = None
     tick_count = 0
+
     def __init__(self):
         self._lock = Lock()
 
@@ -40,7 +42,7 @@ class EffectRunner:
         print("ending")
 
     def startEffect(self, effect):
-        if(self.effect):
+        if self.effect:
             print("stopping existing effect", flush=True)
             self.stopEffect()
         print("setting effect", flush=True)
@@ -53,6 +55,7 @@ class EffectRunner:
         print("setting thread", flush=True)
         self.effectThread.start()
 
+
 class EffectRunnerOld(Thread):
     running = False
     effect = None
@@ -61,18 +64,18 @@ class EffectRunnerOld(Thread):
         Thread.__init__(self)
 
     def setEffect(self, effect):
-        if(self.effect):
+        if self.effect:
             self.effect.stop()
 
         self.effect = effect
 
     def stopEffect(self):
-        #self.running = False
+        # self.running = False
         if self.effect:
             self.effect.stop()
 
     def startEffect(self):
-        #self.running = True
+        # self.running = True
         if self.effect:
             self.effect.start()
 
