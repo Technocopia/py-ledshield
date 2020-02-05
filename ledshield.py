@@ -160,9 +160,8 @@ def testairdraw():
         outputSurface = cv2.resize(effect.canvas, outputSize)
         cv2.imshow("Matrix Scale", outputSurface)
         # cv2.imshow("Canvas", effect.canvas)
-
         # matrix.surface = outputSurface
-        blit(matrix.surface, outputSurface, (0, 0))
+        blit(matrix.surface, cv2.cvtColor(outputSurface, cv2.COLOR_BGR2RGB), (0, 0))
         matrix.update()
 
         k = cv2.waitKey(30) & 0xFF

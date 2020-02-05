@@ -337,7 +337,7 @@ if __name__ == "__main__":
         effect.tick()
         outputSurface = cv2.resize(effect.canvas, outputSize)
         cv2.imshow("Matrix Scale", outputSurface)
-        #cv2.imshow("Canvas", effect.canvas)
+        # cv2.imshow("Canvas", effect.canvas)
 
         k = cv2.waitKey(30) & 0xFF
         if k == 27:
