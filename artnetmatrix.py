@@ -1,4 +1,4 @@
-import numpy
+import numpy, sys
 from artnetbroadcaster import ArtNetBroadcaster
 from artnetreceiver import ArtNetReceiver
 
@@ -23,24 +23,11 @@ MASK_LAYOUT = 0x08
 
 COLOR_ORDER_RGB = 0
 
-MATRIX_MODE_BROADCAST =  0x00
+MATRIX_MODE_BROADCAST = 0x00
 MATRIX_MODE_RECEIVE = 0x01
 
-class ArtNetMatrix:
-    matrix_config = 0x00
 
-    offset_rgb = [0, 1, 2]  # RGB target
-
-    mode = MATRIX_MODE_BROADCAST
-
-    # will have to change to others if, say GRB were supported
-    # offset_rgb = [1,0,2]
-
-    start_universe = 0
-    start_channel = 0
-
-    surface = None
-
+class PixelMap:
     """
     pixel_map = [
         [
@@ -62,6 +49,78 @@ class ArtNetMatrix:
     ]
     """
 
+    mapping = []
+
+    def __init__(
+        self,
+        dimensions,
+        start_pixel=0,
+        layout=LAYOUT_SNAKE,
+        direction=DIRECTION_COLUMNS,
+        start_channel=0,
+        start_universe=0,
+        color_order=COLOR_ORDER_RGB,
+    ):
+        print("making mapping")
+        if not color_order == COLOR_ORDER_RGB:
+            raise ValueError("only rgb color order supported currently")
+
+        if not (direction == DIRECTION_COLUMNS):
+            raise ValueError("only columnwise currently supported")
+
+        shape = dimensions[::-1]
+        self.mapping = numpy.zeros(shape + (2,))
+
+        max_x, max_y = (i - 1 for i in dimensions)
+        # x, y = 0, max_y  #bottom left
+        if start_pixel & START_PIXEL_BOTTOM:
+            y = max_y
+            y_dir = -1
+        else:
+            y = 0
+            y_dir = 1
+
+        if start_pixel & START_PIXEL_RIGHT:
+            x = max_x
+            x_dir = -1
+        else:
+            x = 0
+            x_dir = 1
+
+        current_channel = start_channel
+        current_universe = start_universe
+        while x >= 0 if x_dir < 0 else x <= max_x:
+            while y >= 0 if y_dir < 0 else y <= max_y:
+                self.mapping[y][x] = (current_universe, current_channel)
+                current_channel += LEDS_PER_PIXEL
+                if (current_channel + (LEDS_PER_PIXEL - 1)) > MAX_CHANNEL:
+                    current_channel = start_channel
+                    current_universe += 1
+
+                y = y - 1 if (y_dir < 0) else y + 1
+
+            if layout == LAYOUT_SNAKE:
+                y_dir *= -1
+            else:
+                y = max_y if start_pixel & START_PIXEL_BOTTOM else 0
+
+            y = 0 if y_dir > 0 else max_y
+            x = x - 1 if (x_dir < 0) else (x + 1)
+        print(self.mapping)
+
+
+class ArtNetMatrix:
+    matrix_config = 0x00
+    offset_rgb = [0, 1, 2]  # RGB target
+    mode = MATRIX_MODE_BROADCAST
+    # will have to change to others if, say GRB were supported
+    # offset_rgb = [1,0,2]
+
+    start_universe = 0
+    start_channel = 0
+
+    surface = None
+
     """
     # to get correct output:
        [r,g,b] = buffer[y][x]
@@ -70,6 +129,7 @@ class ArtNetMatrix:
        universes[universe][start_channel][offset_rgb[1]] = g
        universes[universe][start_channel][offset_rgb[2]] = b
     """
+
     def __init__(self, dimensions, matrix_config, color_order):
         self._broadcaster = None
         self._surface = None
@@ -94,9 +154,7 @@ class ArtNetMatrix:
     @property
     def surface(self):
         if self._surface is None:
-            self._surface = numpy.zeros(
-                self.shape + (LEDS_PER_PIXEL,)
-            ).astype('uint8')
+            self._surface = numpy.zeros(self.shape + (LEDS_PER_PIXEL,)).astype("uint8")
         return self._surface
 
     def setBrightness(self, brightness):
@@ -113,22 +171,22 @@ class ArtNetMatrix:
             a surface area w/ the correct colors. returns [x][y][rgb] surface
             array
         """
-        outputsurface = numpy.zeros(
-            self.shape + (LEDS_PER_PIXEL,)
-        ).astype('uint8')
+        outputsurface = numpy.zeros(self.shape + (LEDS_PER_PIXEL,)).astype("uint8")
 
         roff, goff, boff = self.offset_rgb
 
         # this is probably a better way, but whatev
-        #for universe, data in universes:
+        # for universe, data in universes:
 
         for y, x in numpy.ndindex(self.shape):
-            universe, start_channel = [int(i) for i in self.pixel_map[y, x]]
+            universe, start_channel = [int(i) for i in self.pixelMap.mapping[y, x]]
 
             # TODO: take roff, boff, goff into account to reorder colors to rgb
-            c1, c2, c3 = universes[universe][start_channel:start_channel+LEDS_PER_PIXEL]
+            c1, c2, c3 = universes[universe][
+                start_channel : start_channel + LEDS_PER_PIXEL
+            ]
 
-            outputsurface[y,x] = c3,c2,c1
+            outputsurface[y, x] = c3, c2, c1
 
         return outputsurface
 
@@ -136,69 +194,42 @@ class ArtNetMatrix:
         """ Takes the surface object and a pixel map and creates output
             buffers, one for each universe, containing pixel data
         """
-        max_universe = self.pixel_map[:, :, 0].max()
-        universe_buffers = numpy.zeros((int(max_universe+1), 512))
+        max_universe = self.pixelMap.mapping[:, :, 0].max()
+        universe_buffers = numpy.zeros((int(max_universe + 1), 512))
         roff, goff, boff = self.offset_rgb
-        scaler = min(self.brightness, MAX_BRIGHTNESS)/255
+        scaler = min(self.brightness, MAX_BRIGHTNESS) / 255
         # just make all colors scale the same for now
         scaleg, scaleb = [scaler, scaler]
 
         for y, x in numpy.ndindex(self.shape):
             r, g, b = self.surface[y, x]
-            universe, start_channel = [int(i) for i in self.pixel_map[y, x]]
-            universe_buffers[universe][start_channel + roff] = int(r*scaler)
-            universe_buffers[universe][start_channel + goff] = int(g*scaleg)
-            universe_buffers[universe][start_channel + boff] = int(b*scaleb)
+            universe, start_channel = [int(i) for i in self.pixelMap.mapping[y, x]]
+            universe_buffers[universe][start_channel + roff] = int(r * scaler)
+            universe_buffers[universe][start_channel + goff] = int(g * scaleg)
+            universe_buffers[universe][start_channel + boff] = int(b * scaleb)
             # TODO: there's probably some better numpy syntax for this, like:
             # universe_buffers[universe][start_ch:start_ch+LEDS_PER_PIXEL]
         return universe_buffers
 
     def _create_pixel_map(self):
-        """ creates a mapping of dmx channel to surface area
-            TODO: make pixel map a class
-        """
-        if not self.color_order == COLOR_ORDER_RGB:
-            raise ValueError("only rgb color order supported currently")
-        start_pixel = self.matrix_config & MASK_START_PIXEL
-        if not (start_pixel == (START_PIXEL_BOTTOM | START_PIXEL_LEFT)):
-            raise ValueError("only bottom left supported at the moment")
-        layout = self.matrix_config & MASK_LAYOUT
-        if not (layout == LAYOUT_SNAKE):
-            raise ValueError("only snake layout currently supported")
-
-        self.pixel_map = numpy.zeros(self.shape + (2, ))
-
-        max_x, max_y = (i-1 for i in self.dimensions)
-        x, y = 0, max_y  # starting bottom left
-        x_dir, y_dir = 1, -1  # starting bottom left
-        current_channel = self.start_channel
-        current_universe = self.start_universe
-        while x >= 0 if x_dir < 0 else x <= max_x:
-            while y >= 0 if y_dir < 0 else y <= max_y:
-                self.pixel_map[y][x] = (current_universe, current_channel)
-                current_channel += LEDS_PER_PIXEL
-                if(current_channel + (LEDS_PER_PIXEL-1)) > MAX_CHANNEL:
-                    current_channel = self.start_channel
-                    current_universe += 1
-
-                y = y-1 if (y_dir < 0) else y+1
-
-            y_dir *= -1
-            y = 0 if y_dir > 0 else max_y
-            x = x-1 if (x_dir < 0) else (x+1)
+        self.pixelMap = PixelMap(
+            self.dimensions,
+            start_pixel=self.matrix_config & MASK_START_PIXEL,
+            layout=self.matrix_config & MASK_LAYOUT,
+        )
 
     def receiveFrame(self):
         if self.mode != MATRIX_MODE_RECEIVE:
             raise TypeError("Matrix is not in receive mode")
         universes = {}
-        max_universe = self.pixel_map[:, :, 0].max()
+        max_universe = self.pixelMap.mapping[:, :, 0].max()
 
         while len(universes.keys()) <= max_universe:
             packet = self.receiver.receive()
             if packet:
-                #if len(u_c.keys()) < 3:
-                #print(packet.data[0:2])
-                #else:
+                # if len(u_c.keys()) < 3:
+                # print(packet.data[0:2])
+                # else:
                 #    return
                 universes[packet.universe] = packet.data
         return self.unpack_universes(universes)
