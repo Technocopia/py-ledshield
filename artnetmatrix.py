@@ -173,7 +173,7 @@ class ArtNetMatrix:
         """
         outputsurface = numpy.zeros(self.shape + (LEDS_PER_PIXEL,)).astype("uint8")
 
-        #roff, goff, boff = self.offset_rgb
+        # roff, goff, boff = self.offset_rgb
 
         # this is probably a better way, but whatev
         # for universe, data in universes:

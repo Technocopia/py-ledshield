@@ -169,13 +169,13 @@ class MoveDownFilter(EffectFilter):
 
         # this method is quite a bit faster!
         # to shift two down:
-        ret = np.roll(surface,4,0)
+        ret = np.roll(surface, 4, 0)
         # to shift one down:
-        #ret = np.roll(surface, 1, 1)
+        # ret = np.roll(surface, 1, 1)
 
         # leave this line out of you want to wrap around
         # otherwise, this will clear out the lines that wrapped
-        #ret[[0],:] = 0
+        # ret[[0],:] = 0
         return ret
 
 
@@ -196,21 +196,28 @@ class AirDraw(object):
     showFeed = True
 
     timers = {
-        'capture': 0,
-        'capture-recent': 0,
-        'trackers': 0,
-        'trackers-recent': 0,
-        'post-process': 0,
-        'post-process-recent': 0
+        "capture": 0,
+        "capture-recent": 0,
+        "trackers": 0,
+        "trackers-recent": 0,
+        "post-process": 0,
+        "post-process-recent": 0,
     }
-    
+
     def __init__(self):
         cv2.destroyAllWindows()
         cv2.waitKey(30)
 
     def __str__(self):
-        return "Trk: {0:2.4f}/({1:2.1f}) Cap: {2:2.5f}/({3:2.1f}) Post: {4:2.5f}/({5:2.1f})".format(self.timers['trackers-recent'],self.timers['trackers'], self.timers['capture-recent'], self.timers['capture'], self.timers['post-process-recent'], self.timers['post-process'])
-        
+        return "Trk: {0:2.4f}/({1:2.1f}) Cap: {2:2.5f}/({3:2.1f}) Post: {4:2.5f}/({5:2.1f})".format(
+            self.timers["trackers-recent"],
+            self.timers["trackers"],
+            self.timers["capture-recent"],
+            self.timers["capture"],
+            self.timers["post-process-recent"],
+            self.timers["post-process"],
+        )
+
     def reset(self):
         print("resetting", flush=True)
 
@@ -246,7 +253,7 @@ class AirDraw(object):
         self.postProcessors = [MoveDownFilter(1), BlurFilter(1), FadeFilter(1)]
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 64)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 40)
-        
+
         camwidth = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         camheight = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.canvas = np.zeros((camheight, camwidth, 3), np.uint8)
@@ -298,7 +305,7 @@ class AirDraw(object):
             return
         start_time = time.time()
         ret, frame = self.cap.read()
-        #frame = cv2.resize(frame, (160, 120))
+        # frame = cv2.resize(frame, (160, 120))
         frame = cv2.flip(frame, 1)
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         end_time = time.time()

@@ -184,9 +184,17 @@ def testairdraw():
             if not effect.tick_count % 20:
                 current_fps = MAX_SAMPLES / sum(tick_samples)
                 output_fps = MAX_SAMPLES / sum(output_samples)
-                print("tk/s: ", round(current_fps,1), "mem:", process.memory_info().rss/1024, "ouputFrames/sec: ", round(output_fps, 1), end="")
-                print(" ",effect)
-                #print("\r", end="")
+                print(
+                    "tk/s: ",
+                    round(current_fps, 1),
+                    "mem:",
+                    process.memory_info().rss / 1024,
+                    "ouputFrames/sec: ",
+                    round(output_fps, 1),
+                    end="",
+                )
+                print(" ", effect)
+                # print("\r", end="")
 
 
 if __name__ == "__main__":
