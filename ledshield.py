@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import time, psutil, os
+import psutil, os
 from artnetmatrix import (
     ArtNetMatrix,
     START_PIXEL_TOP,
@@ -162,39 +162,19 @@ def testairdraw():
     process = psutil.Process(os.getpid())
 
     while effect.running:
-        start_time_effect = time.time()
         effect.tick()
-        end_time_effect = time.time()
         k = cv2.waitKey(10) & 0xFF
         if k == 27:
             effect.stop()
         # cv2.imshow("Canvas", effect.canvas)
-        start_time_output = time.time()
         outputSurface = cv2.resize(effect.canvas, outputSize)
         cv2.imshow("Matrix Scale", outputSurface)
         blit(matrix.surface, cv2.cvtColor(outputSurface, cv2.COLOR_BGR2RGB), (0, 0))
         matrix.update()
-        end_time_output = time.time()
-
-        tick_samples.append(end_time_effect - start_time_effect)
-        output_samples.append(end_time_output - start_time_output)
-        if len(tick_samples) > MAX_SAMPLES:
-            tick_samples.popleft()
-            output_samples.popleft()
-            if not effect.tick_count % 20:
-                current_fps = MAX_SAMPLES / sum(tick_samples)
-                output_fps = MAX_SAMPLES / sum(output_samples)
-                print(
-                    "tk/s: ",
-                    round(current_fps, 1),
-                    "mem:",
-                    process.memory_info().rss / 1024,
-                    "ouputFrames/sec: ",
-                    round(output_fps, 1),
-                    end="",
-                )
-                print(" ", effect)
-                # print("\r", end="")
+        if not effect.tick_count % 100:
+            print("mem:", process.memory_info().rss / 1024 / 1024)
+            print(effect.timers.get("loop"))
+            # print("\r", end="")
 
 
 if __name__ == "__main__":

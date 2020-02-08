@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-import time
+import time, json
 from collections import deque
 
 # THESE ARE IN BGR
@@ -68,7 +68,60 @@ def inRangeFromRangeList(hsv, rangeList):
     return mask
 
 
-class TrackingColor(object):
+class TimeKeeper:
+    _timers = {}
+
+    def start(self, name):
+        thistimer = self._timers.setdefault(
+            name,
+            {
+                "total": 0,
+                "samples": 0,
+                "last": None,
+                "current": None,
+                "avg": None,
+                "min": None,
+                "max": None,
+            },
+        )
+        if thistimer["current"] is not None:
+            print(thistimer)
+            raise ValueError("Timer was already running")
+
+        thistimer["current"] = time.time()
+
+    def stop(self, name):
+        if not self._timers[name]:
+            raise ValueError("No Such Timer")
+
+        thistimer = self._timers[name]
+
+        if not thistimer["current"]:
+            raise ValueError("Timer was stopped before it was started")
+
+        last = time.time() - thistimer["current"]
+
+        thistimer["last"] = last
+        thistimer["min"] = min(
+            i for i in [last, thistimer["min"]] if i is not None and i != 0.0
+        )
+        thistimer["max"] = max(i for i in [last, thistimer["max"]] if i is not None)
+        count = thistimer["samples"] + 1
+        thistimer["samples"] = count
+        thistimer["avg"] = ((thistimer["avg"] or 0) * (count - 1) + last) / count
+        thistimer["total"] += last
+        thistimer["current"] = None
+
+    def get(self, name):
+        if not self._timers[name]:
+            raise ValueError("No Such Timer")
+        return self._timers[name]
+
+    def __str__(self):
+        return json.dumps(self._timers)
+
+
+class TrackingColor:
     bgr = None
     _rangeList = None
 
@@ -94,7 +147,7 @@ class TrackingColor(object):
         return self._rangeList
 
 
-class Tracker(object):
+class Tracker:
     name = None
     kernel = None
     colorMask = None
@@ -130,7 +183,7 @@ class Tracker(object):
             self.x, self.y, self.radius = None, None, None
 
 
-class EffectFilter(object):
+class EffectFilter:
     frequency = None
 
     def __init__(self, frequency=1):
@@ -179,7 +232,7 @@ class MoveDownFilter(EffectFilter):
         return ret
 
 
-class AirDraw(object):
+class AirDraw:
     # move these to parent class
     # state
     running = False
@@ -195,32 +248,18 @@ class AirDraw(object):
     showCanvas = True
     showFeed = True
 
-    timers = {
-        "capture": 0,
-        "capture-recent": 0,
-        "trackers": 0,
-        "trackers-recent": 0,
-        "post-process": 0,
-        "post-process-recent": 0,
-    }
+    timers = None
 
     def __init__(self):
         cv2.destroyAllWindows()
         cv2.waitKey(30)
 
     def __str__(self):
-        return "Trk: {0:2.4f}/({1:2.1f}) Cap: {2:2.5f}/({3:2.1f}) Post: {4:2.5f}/({5:2.1f})".format(
-            self.timers["trackers-recent"],
-            self.timers["trackers"],
-            self.timers["capture-recent"],
-            self.timers["capture"],
-            self.timers["post-process-recent"],
-            self.timers["post-process"],
-        )
+        return self.timers
 
     def reset(self):
         print("resetting", flush=True)
-
+        self.timers = TimeKeeper()
         self.trackers = [
             Tracker(
                 TrackingColor(
@@ -277,7 +316,9 @@ class AirDraw(object):
     def tick(self):
         if self.running:
             self.tick_count = self.tick_count + 1
+            self.timers.start("loop")
             self.loop()
+            self.timers.stop("loop")
         else:
             print("tick called on non-running thread", flush=True)
 
@@ -303,15 +344,13 @@ class AirDraw(object):
         if not self.running:
             print("cannot loop when not running", flush=True)
             return
-        start_time = time.time()
+        self.timers.start("capture")
         ret, frame = self.cap.read()
         # frame = cv2.resize(frame, (160, 120))
         frame = cv2.flip(frame, 1)
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        end_time = time.time()
-        self.timers["capture"] += end_time - start_time
-        self.timers["capture-recent"] = end_time - start_time
-        start_time = time.time()
+        self.timers.stop("capture")
+        self.timers.start("trackers")
         for tracker in self.trackers:
             tracker.update(hsv)
 
@@ -335,16 +374,11 @@ class AirDraw(object):
                     tracker.trackingColor.bgr,
                     -1,
                 )
-        end_time = time.time()
-        self.timers["trackers"] += end_time - start_time
-        self.timers["trackers-recent"] = end_time - start_time
-        start_time = time.time()
+        self.timers.stop("trackers")
+        self.timers.start("post-process")
         for postProcessor in self.postProcessors:
             self.canvas = postProcessor.process(self.canvas, self.tick_count)
-        end_time = time.time()
-        self.timers["post-process"] += end_time - start_time
-        self.timers["post-process-recent"] = end_time - start_time
-
+        self.timers.stop("post-process")
         if self.showCanvas:
             cv2.imshow("Canvas", self.canvas)
             cv2.waitKey(10) & 0xFF
@@ -360,24 +394,14 @@ if __name__ == "__main__":
     effect = AirDraw()
     effect.showCanvas = False
     effect.start()
-    tick_samples = deque()
-    current_fps = 0
-    MAX_SAMPLES = 100
     while effect.running:
-        start_time = time.time()
         effect.tick()
         outputSurface = cv2.resize(effect.canvas, outputSize)
         cv2.imshow("Matrix Scale", outputSurface)
         # cv2.imshow("Canvas", effect.canvas)
-
         k = cv2.waitKey(30) & 0xFF
         if k == 27:
             effect.stop()
-        end_time = time.time()
-        tick_samples.append(end_time - start_time)
-        if len(tick_samples) > MAX_SAMPLES:
-            tick_samples.popleft()
-            # current_fps = statistics.mean(tick_samples)
-            current_fps = MAX_SAMPLES / sum(tick_samples)
-            if effect.tick_count % 400:
-                print(current_fps)
+
+        if not effect.tick_count % 400:
+            print(effect.timers.get("loop"))
