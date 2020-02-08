@@ -13,13 +13,13 @@ from artnetmatrix import (
     COLOR_ORDER_RGB,
 )
 
-OPTS = START_PIXEL_BOTTOM | START_PIXEL_LEFT | DIRECTION_COLUMNS | LAYOUT_SNAKE
-# OPTS = START_PIXEL_TOP | START_PIXEL_RIGHT | DIRECTION_COLUMNS | LAYOUT_SNAKE
+OPTS = START_PIXEL_TOP | START_PIXEL_RIGHT | DIRECTION_COLUMNS | LAYOUT_SNAKE
+#OPTS = START_PIXEL_BOTTOM | START_PIXEL_LEFT | DIRECTION_COLUMNS | LAYOUT_SNAKE
 
 print(OPTS)
 if __name__ == "__main__":
     print("artnet listner")
-    artnet = ArtNetReceiver(ip="192.168.0.122")
+    artnet = ArtNetReceiver(ip="")
     matrix = ArtNetMatrix((16, 40), OPTS, COLOR_ORDER_RGB)
     matrix.setReceiveMode(artnet)
 

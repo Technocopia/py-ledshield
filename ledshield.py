@@ -1,7 +1,9 @@
 #!/usr/bin/env python
-import time
+import time, psutil, os
 from artnetmatrix import (
     ArtNetMatrix,
+    START_PIXEL_TOP,
+    START_PIXEL_RIGHT,
     START_PIXEL_BOTTOM,
     START_PIXEL_LEFT,
     DIRECTION_COLUMNS,
@@ -10,7 +12,7 @@ from artnetmatrix import (
 )
 from effects import airdraw
 
-OPTS = START_PIXEL_BOTTOM | START_PIXEL_LEFT | DIRECTION_COLUMNS | LAYOUT_SNAKE
+OPTS = START_PIXEL_TOP | START_PIXEL_RIGHT | DIRECTION_COLUMNS | LAYOUT_SNAKE
 
 import cv2
 import numpy as np
@@ -149,32 +151,42 @@ def testairdraw():
     outputSize = (16, 40)
     matrix = ArtNetMatrix((16, 40), OPTS, COLOR_ORDER_RGB)
     effect = airdraw.AirDraw()
-    effect.showCanvas = False
+    effect.showCanvas = True
+    effect.showMask = False
+
     effect.start()
     tick_samples = deque()
+    output_samples = deque()
     current_fps = 0
-    MAX_SAMPLES = 100
-    while effect.running:
-        start_time = time.time()
-        effect.tick()
-        outputSurface = cv2.resize(effect.canvas, outputSize)
-        cv2.imshow("Matrix Scale", outputSurface)
-        # cv2.imshow("Canvas", effect.canvas)
-        # matrix.surface = outputSurface
-        blit(matrix.surface, cv2.cvtColor(outputSurface, cv2.COLOR_BGR2RGB), (0, 0))
-        matrix.update()
+    MAX_SAMPLES = 10
+    process = psutil.Process(os.getpid())
 
-        k = cv2.waitKey(30) & 0xFF
+    while effect.running:
+        start_time_effect = time.time()
+        effect.tick()
+        end_time_effect = time.time()
+        k = cv2.waitKey(10) & 0xFF
         if k == 27:
             effect.stop()
-        end_time = time.time()
-        tick_samples.append(end_time - start_time)
+        # cv2.imshow("Canvas", effect.canvas)
+        start_time_output = time.time()
+        outputSurface = cv2.resize(effect.canvas, outputSize)
+        cv2.imshow("Matrix Scale", outputSurface)
+        blit(matrix.surface, cv2.cvtColor(outputSurface, cv2.COLOR_BGR2RGB), (0, 0))
+        matrix.update()
+        end_time_output = time.time()
+
+        tick_samples.append(end_time_effect - start_time_effect)
+        output_samples.append(end_time_output - start_time_output)
         if len(tick_samples) > MAX_SAMPLES:
             tick_samples.popleft()
-            # current_fps = statistics.mean(tick_samples)
-            current_fps = MAX_SAMPLES / sum(tick_samples)
-            if effect.tick_count % 400:
-                print(current_fps)
+            output_samples.popleft()
+            if not effect.tick_count % 20:
+                current_fps = MAX_SAMPLES / sum(tick_samples)
+                output_fps = MAX_SAMPLES / sum(output_samples)
+                print("tk/s: ", round(current_fps,1), "mem:", process.memory_info().rss/1024, "ouputFrames/sec: ", round(output_fps, 1), end="")
+                print(" ",effect)
+                #print("\r", end="")
 
 
 if __name__ == "__main__":

@@ -148,7 +148,7 @@ class EffectFilter(object):
 
 class BlurFilter(EffectFilter):
     def filter(self, surface):
-        return cv2.GaussianBlur(surface, (5, 5), cv2.BORDER_DEFAULT)
+        return cv2.GaussianBlur(surface, (9, 9), cv2.BORDER_DEFAULT)
 
 
 class FadeFilter(EffectFilter):
@@ -156,7 +156,7 @@ class FadeFilter(EffectFilter):
         # there has to be a better way, for now this works
         # have to cast to signed value to prevent wrap around
         # ret = cv2.subtract(surface, 10)
-        ret = np.clip(np.array(surface, dtype=np.int16) - 1, 0, 255)
+        ret = np.clip(np.array(surface, dtype=np.int16) - 5, 0, 255)
         return np.array(ret, dtype=np.uint8)
 
 
@@ -169,14 +169,13 @@ class MoveDownFilter(EffectFilter):
 
         # this method is quite a bit faster!
         # to shift two down:
-        # ret = np.roll(surface,2,0)
-        # ret[[0,1],:] = 0
-
+        ret = np.roll(surface,4,0)
         # to shift one down:
-        ret = np.roll(surface, 1, 0)
+        #ret = np.roll(surface, 1, 1)
+
         # leave this line out of you want to wrap around
         # otherwise, this will clear out the lines that wrapped
-        # ret[[0],:] = 0
+        #ret[[0],:] = 0
         return ret
 
 
@@ -196,10 +195,22 @@ class AirDraw(object):
     showCanvas = True
     showFeed = True
 
+    timers = {
+        'capture': 0,
+        'capture-recent': 0,
+        'trackers': 0,
+        'trackers-recent': 0,
+        'post-process': 0,
+        'post-process-recent': 0
+    }
+    
     def __init__(self):
         cv2.destroyAllWindows()
         cv2.waitKey(30)
 
+    def __str__(self):
+        return "Trk: {0:2.4f}/({1:2.1f}) Cap: {2:2.5f}/({3:2.1f}) Post: {4:2.5f}/({5:2.1f})".format(self.timers['trackers-recent'],self.timers['trackers'], self.timers['capture-recent'], self.timers['capture'], self.timers['post-process-recent'], self.timers['post-process'])
+        
     def reset(self):
         print("resetting", flush=True)
 
@@ -216,8 +227,8 @@ class AirDraw(object):
                 TrackingColor(
                     YELLOW,
                     threshold=10,
-                    saturationRange=(150, 255),
-                    valueRange=(150, 255),
+                    saturationRange=(100, 255),
+                    valueRange=(125, 255),
                 ),
                 "yellow",
             ),
@@ -231,8 +242,11 @@ class AirDraw(object):
         ]
 
         self.cap = cv2.VideoCapture(0)
-        self.postProcessors = [MoveDownFilter(1), BlurFilter(10), FadeFilter(10)]
 
+        self.postProcessors = [MoveDownFilter(1), BlurFilter(1), FadeFilter(1)]
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 64)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 40)
+        
         camwidth = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         camheight = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.canvas = np.zeros((camheight, camwidth, 3), np.uint8)
@@ -282,11 +296,15 @@ class AirDraw(object):
         if not self.running:
             print("cannot loop when not running", flush=True)
             return
+        start_time = time.time()
         ret, frame = self.cap.read()
-
+        #frame = cv2.resize(frame, (160, 120))
         frame = cv2.flip(frame, 1)
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-
+        end_time = time.time()
+        self.timers["capture"] += end_time - start_time
+        self.timers["capture-recent"] = end_time - start_time
+        start_time = time.time()
         for tracker in self.trackers:
             tracker.update(hsv)
 
@@ -310,9 +328,15 @@ class AirDraw(object):
                     tracker.trackingColor.bgr,
                     -1,
                 )
-
+        end_time = time.time()
+        self.timers["trackers"] += end_time - start_time
+        self.timers["trackers-recent"] = end_time - start_time
+        start_time = time.time()
         for postProcessor in self.postProcessors:
             self.canvas = postProcessor.process(self.canvas, self.tick_count)
+        end_time = time.time()
+        self.timers["post-process"] += end_time - start_time
+        self.timers["post-process-recent"] = end_time - start_time
 
         if self.showCanvas:
             cv2.imshow("Canvas", self.canvas)
