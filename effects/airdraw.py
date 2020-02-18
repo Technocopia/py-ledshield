@@ -1,4 +1,5 @@
 import cv2
+import imutils
 import numpy as np
 import time, json
 from collections import deque
@@ -216,10 +217,14 @@ class Tracker:
     def update(self, hsvFrame):
         # Determine which pixels fall within the color boundaries and then blur the binary image
         self.colorMask = self.createColorTrackingMask(hsvFrame, self.trackingColor)
-        self.contours, hierarchy = cv2.findContours(
-            self.colorMask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-
+        if imutils.is_cv2():
+            self.contours, _ = cv2.findContours(
+                self.colorMask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+        elif imutils.is_cv3():
+            _, self.contours, _ = cv2.findContours(
+                self.colorMask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
         # Check to see if any contours (blue stuff) were found
         if len(self.contours) > 0:
             contour = sorted(self.contours, key=cv2.contourArea, reverse=True)[0]

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-import psutil, os
+import psutil, os, imutils
+
 from artnetmatrix import (
     ArtNetMatrix,
     START_PIXEL_TOP,
@@ -95,9 +96,15 @@ def testopencv3():
         imgray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         ret, thresh = cv2.threshold(imgray, 127, 255, 0)
         # im2, contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contours, hierarchy = cv2.findContours(
-            thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-        )
+
+        if imutils.is_cv2():
+            contours, _ = cv2.findContours(
+                thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+            )
+        elif imutils.is_cv3():
+            _, contours, _ = cv2.findContours(
+                thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+            )
         img = frame  # cv2.cvtColor(imgray, cv2.COLOR_BGR2GRAY)
         img2 = cv2.drawContours(img, contours, -1, (0, 255, 0), 3)
         cv2.imshow("frame", img2)
