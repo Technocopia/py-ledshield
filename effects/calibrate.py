@@ -10,7 +10,6 @@ from airdraw import TrackingColor, Tracker, BLUE, bgrToHsv
 MARKER_THICKNESS = 2
 # Blue color in BGR
 MARKER_COLOR = (255, 0, 0)
-
 MARKER_SIZE = [40, 40]
 
 
@@ -20,24 +19,77 @@ class CalibrationApp:
         self.capturePanel = None
         self.palettePanel = None
 
+        self.hSlider = tkinter.Scale(
+            self.root,
+            from_=0,
+            to=179,
+            orient="horizontal",
+            length=200,
+            label="Hue",
+            command=self.handleColorSliderUpdate,
+        )
+        self.hSlider.grid(row=0, column=1)
+        self.hThreshSlider = tkinter.Scale(
+            self.root,
+            from_=0,
+            to=20,
+            orient="horizontal",
+            length=200,
+            label="(Threshold)",
+            command=self.handleColorSliderUpdate,
+        )
+        self.hThreshSlider.grid(row=0, column=2)
+
+        self.sSliderMin = tkinter.Scale(
+            self.root,
+            from_=0,
+            to=255,
+            orient="horizontal",
+            length=200,
+            label="Value (Min)",
+            command=self.handleColorSliderUpdate,
+        )
+        self.sSliderMin.grid(row=2, column=1)
+        self.sSliderMax = tkinter.Scale(
+            self.root,
+            from_=0,
+            to=255,
+            orient="horizontal",
+            length=200,
+            label="(Max)",
+            command=self.handleColorSliderUpdate,
+        )
+        self.sSliderMax.grid(row=2, column=2)
+
+        self.vSliderMin = tkinter.Scale(
+            self.root,
+            from_=0,
+            to=255,
+            orient="horizontal",
+            length=200,
+            label="Saturation (Min)",
+            command=self.handleColorSliderUpdate,
+        )
+        self.vSliderMin.grid(row=4, column=1)
+        self.vSliderMax = tkinter.Scale(
+            self.root,
+            from_=0,
+            to=255,
+            orient="horizontal",
+            length=200,
+            label="(Max)",
+            command=self.handleColorSliderUpdate,
+        )
+        self.vSliderMax.grid(row=4, column=2)
+
         btn = tkinter.Button(self.root, text="Calibrate", command=self.takeSample)
-        btn.pack(side="bottom", fill="both", expand="yes", padx=10, pady=10)
+        btn.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
 
-        # c1 = tkinter.IntVar()
-        # tkinter.Checkbutton(self.root, text="Color 1", variable=c1).place(x=320, y=20)
-        # c2 = tkinter.IntVar()
-        # tkinter.Checkbutton(self.root, text="Color 2", variable=c2).place(x=320, y=45)
-        # c3 = tkinter.IntVar()
-        # tkinter.Checkbutton(self.root, text="Color 2", variable=c3).place(x=320, y=70)
-
-        # self.hueSlider = tkinter.Scale(self.root, from_=0, to=100, orient="horizontal") #, command=self.updateSliders)
-        # self.hueSlider.place(x=340, y=20)
-        # self.hueSlider.pack()
-        # w.get() to query
         self.colorButton = tkinter.Button(
             self.root, text="Change Color", command=self.changeTrackingColor
         )
-        self.colorButton.place(x=320, y=20)
+        # self.colorButton.place(x=320, y=20)
+        self.colorButton.grid(row=6, column=1, padx=10, pady=10)
 
         # set a callback to handle when the window is closed
         self.root.wm_title("AirDraw Calibration")
@@ -52,7 +104,7 @@ class CalibrationApp:
         self.trackers = [
             Tracker(
                 TrackingColor(
-                     bgrToHsv(self.trackingColor),
+                    bgrToHsv(self.trackingColor),
                     threshold=15,
                     saturationRange=(80, 255),
                     valueRange=(80, 255),
@@ -89,9 +141,41 @@ class CalibrationApp:
         print(r, g, b)
         self.trackingColor = (b, g, r)
         print("setting new bgr", self.trackingColor)
-        print("hsv before",self.trackers[0].trackingColor.hsv)
+        print("hsv before", self.trackers[0].trackingColor.hsv)
         self.trackers[0].trackingColor.bgr = self.trackingColor
         print("hsv after", self.trackers[0].trackingColor.hsv)
+
+        h, s, v = self.trackers[0].trackingColor.hsv
+        self.hSlider.set(h)
+        self.sSliderMin.set(s)
+        self.vSliderMin.set(v)
+
+    def handleColorSliderUpdate(self, _):
+        h = self.hSlider.get()
+        thresh = self.hThreshSlider.get()
+
+        sMin = self.sSliderMin.get()
+        sMax = self.sSliderMax.get()
+        sMinNew = min(sMin, sMax)
+        sMaxNew = max(sMin, sMax)
+        self.sSliderMin.set(sMinNew)
+        self.sSliderMax.set(sMaxNew)
+
+        vMin = self.vSliderMin.get()
+        vMax = self.vSliderMax.get()
+        vMinNew = min(vMin, vMax)
+        vMaxNew = max(vMin, vMax)
+        self.vSliderMin.set(vMinNew)
+        self.vSliderMax.set(vMaxNew)
+
+        self.trackers[0].trackingColor.hsv = [
+            h,
+            sMinNew + sMaxNew / 2,
+            vMinNew + vMaxNew / 2,
+        ]
+        self.trackers[0].trackingColor.threshold = thresh
+        self.trackers[0].trackingColor.saturationRange = (sMinNew, sMaxNew)
+        self.trackers[0].trackingColor.valueRange = (vMinNew, vMaxNew)
 
     def loop(self):
         try:
@@ -111,9 +195,11 @@ class CalibrationApp:
                 hsvFrame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 self.trackers[0].update(hsvFrame)
                 if True:  # Show mask
-                    #print( self.trackers[0].trackingColor.hsv)
-                    #frame = self.trackers[0].colorMask
-                    frame = cv2.bitwise_and(frame,frame,mask=self.trackers[0].colorMask)
+                    # print( self.trackers[0].trackingColor.hsv)
+                    # frame = self.trackers[0].colorMask
+                    frame = cv2.bitwise_and(
+                        frame, frame, mask=self.trackers[0].colorMask
+                    )
                 # lmain.imgtk = imgtk
                 # lmain.configure(image=imgtk)
                 # lmain.after(10, show_frame)
@@ -128,9 +214,10 @@ class CalibrationApp:
 
                 if self.capturePanel is None:
                     self.capturePanel = tkinter.Label(image=image)
-                    self.capturePanel.pack(side="left", padx=10, pady=10)
-                else:
-                    self.capturePanel.configure(image=image)
+                    # self.capturePanel.pack(side="left", padx=10, pady=10)
+                    self.capturePanel.grid(row=0, column=0, rowspan=7, padx=10, pady=10)
+
+                self.capturePanel.configure(image=image)
                 self.capturePanel.image = image
 
         except RuntimeError:
@@ -139,23 +226,24 @@ class CalibrationApp:
     def takeSample(self):
         print("beep beep")
 
-    def mouseRGB(event,x,y,flags,param):
-        if event == cv2.EVENT_LBUTTONDOWN: #checks mouse left button down condition
-            colorsB = frame[y,x,0]
-            colorsG = frame[y,x,1]
-            colorsR = frame[y,x,2]
-            colors = frame[y,x]
-            print("Red: ",colorsR)
-            print("Green: ",colorsG)
-            print("Blue: ",colorsB)
-            print("BRG Format: ",colors)
-            print("Coordinates of pixel: X: ",x,"Y: ",y)
+    def mouseRGB(event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:  # checks mouse left button down condition
+            colorsB = frame[y, x, 0]
+            colorsG = frame[y, x, 1]
+            colorsR = frame[y, x, 2]
+            colors = frame[y, x]
+            print("Red: ", colorsR)
+            print("Green: ", colorsG)
+            print("Blue: ", colorsB)
+            print("BRG Format: ", colors)
+            print("Coordinates of pixel: X: ", x, "Y: ", y)
 
     def onClose(self):
         print("[INFO] closing...")
         self.cap.release()
         self.stopEvent.set()
         self.root.quit()
+
 
 if __name__ == "__main__":
     print("calibrating items for airdraw effect")
