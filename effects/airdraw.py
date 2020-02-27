@@ -11,27 +11,27 @@ RED = (0, 0, 255)
 # WHITE = (220, 220, 220)
 YELLOW = (10, 180, 180)
 # ORANGE = (10, 100, 220)
+MAX_MARKER_RADIUS = 20
+MIN_MARKER_RADIUS = 1
 
 
 def bgrToHsvRange(bgr, threshold=30, saturationRange=(120, 255), valueRange=(120, 255)):
     hsv = bgrToHsv(bgr)
     return getHsvRange(hsv, threshold, saturationRange, valueRange)
 
+
 def bgrToHsv(bgr):
-    #return cv2.cvtColor(np.uint8([[bgr]]), cv2.COLOR_BGR2HSV)[0][0]
-    return tuple(
-        map(int,cv2.cvtColor(np.uint8([[bgr]]), cv2.COLOR_BGR2HSV)[0][0])
-    )
+    # return cv2.cvtColor(np.uint8([[bgr]]), cv2.COLOR_BGR2HSV)[0][0]
+    return tuple(map(int, cv2.cvtColor(np.uint8([[bgr]]), cv2.COLOR_BGR2HSV)[0][0]))
 
 
 def hsvToBgr(hsv):
     # tuple(map(int, cv2....))
     # return cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2BGR)
-    #print([[hsv]])
-    #return cv2.cvtColor(np.array([[hsv]]), cv2.COLOR_HSV2BGR)
-    return tuple(
-        map(int, cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2BGR)[0][0])
-    )
+    # print([[hsv]])
+    # return cv2.cvtColor(np.array([[hsv]]), cv2.COLOR_HSV2BGR)
+    return tuple(map(int, cv2.cvtColor(np.uint8([[hsv]]), cv2.COLOR_HSV2BGR)[0][0]))
+
 
 def getHsvRange(hsv, threshold=30, saturationRange=(120, 255), valueRange=(120, 255)):
     minS, maxS = saturationRange
@@ -39,6 +39,7 @@ def getHsvRange(hsv, threshold=30, saturationRange=(120, 255), valueRange=(120, 
     minHSV = np.array([hsv[0] - threshold, minS, minV])
     maxHSV = np.array([hsv[0] + threshold, maxS, maxV])
     return minHSV, maxHSV
+
 
 def rangeSplit(colorLower, colorUpper):
     hUpper, sUpper, vUpper = colorUpper
@@ -48,6 +49,7 @@ def rangeSplit(colorLower, colorUpper):
         raise "upper h-value is smaller than lower h-value"
 
     if hLower < 0 and hUpper > 180:
+        print(colorLower, colorUpper)
         raise "both upper and lower h-values are out of range"
 
     rangeList = []
@@ -121,8 +123,9 @@ class TimeKeeper:
         last = time.time() - thistimer["current"]
 
         thistimer["last"] = last
+        print(last, thistimer["min"])
         thistimer["min"] = min(
-            i for i in [last, thistimer["min"]] if i is not None and i != 0.0
+            i for i in [last, thistimer["min"]] if i is not None# and i != 0.0
         )
         thistimer["max"] = max(i for i in [last, thistimer["max"]] if i is not None)
         count = thistimer["samples"] + 1
@@ -139,6 +142,9 @@ class TimeKeeper:
     def __str__(self):
         return json.dumps(self._timers)
 
+# TODO: make this clas take just an hsv and a different thresh for
+# h, s, v, respectively. The current model allows s and v ranges
+# to be exclusive of the actual s, v component
 
 class TrackingColor:
     _bgr = None
@@ -179,7 +185,6 @@ class TrackingColor:
         print("in bgr setter new bgr (check):", self._bgr)
         print("in bgr setter new HSV", self._hsv)
 
-
     @property
     def rangeList(self):
         if self._rangeList is None:
@@ -189,6 +194,7 @@ class TrackingColor:
                 saturationRange=self.saturationRange,
                 valueRange=self.valueRange,
             )
+            print(self.hsv, self.threshold)
             self._rangeList = rangeSplit(colorLower, colorUpper)
         return self._rangeList
 
@@ -201,6 +207,10 @@ class Tracker:
     x = None
     y = None
     radius = None
+    lastX = None
+    lastY = None
+    lastRadius = None
+    skipLastCount = 0
 
     def __init__(self, trackingColor, name=None):
         self.trackingColor = trackingColor
@@ -215,24 +225,35 @@ class Tracker:
         return colorMask
 
     def update(self, hsvFrame):
+
+        if self.x and self.y and self.radius:
+            self.lastX, self.lastY, self.lastRadius = self.x, self.y, self.radius
+            self.x, self.y, self.radius = None, None, None
+
         # Determine which pixels fall within the color boundaries and then blur the binary image
         self.colorMask = self.createColorTrackingMask(hsvFrame, self.trackingColor)
-        if imutils.is_cv2():
+        # cv2 or cv4 !
+        if not imutils.is_cv3():
             self.contours, _ = cv2.findContours(
                 self.colorMask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
-        elif imutils.is_cv3():
+        else: #if imutils.is_cv3():
             _, self.contours, _ = cv2.findContours(
                 self.colorMask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
-        # Check to see if any contours (blue stuff) were found
-        if len(self.contours) > 0:
+
+        # Check to see if any contours ere found
+        if self.contours is not None and len(self.contours) > 0:
             contour = sorted(self.contours, key=cv2.contourArea, reverse=True)[0]
             # Get the radius of the enclosing circle around the found contour
             ((self.x, self.y), self.radius) = cv2.minEnclosingCircle(contour)
         else:
-            self.x, self.y, self.radius = None, None, None
-
+            # only delete the last position if the tracker has been dead fora while
+            # this accounts for flicker
+            self.skipLastCount += 1
+            if self.skipLastCount > 5:
+                self.skipLastCount = 0
+                self.lastX, self.lastY, self.lastRadius = None, None, None
 
 class EffectFilter:
     frequency = None
@@ -246,7 +267,6 @@ class EffectFilter:
         return self.filter(surface)
 
     def filter(self, surface):
-        print("parent tld")
         return surface
 
 
@@ -314,7 +334,10 @@ class AirDraw:
         self.trackers = [
             Tracker(
                 TrackingColor(
-                    bgrToHsv(BLUE), threshold=15, saturationRange=(80, 255), valueRange=(80, 255)
+                    bgrToHsv(BLUE),
+                    threshold=15,
+                    saturationRange=(80, 255),
+                    valueRange=(80, 255),
                 ),
                 "blue",
             ),
@@ -331,7 +354,10 @@ class AirDraw:
             ),
             Tracker(
                 TrackingColor(
-                    bgrToHsv(RED), threshold=4, saturationRange=(100, 255), valueRange=(100, 255)
+                    bgrToHsv(RED),
+                    threshold=4,
+                    saturationRange=(100, 255),
+                    valueRange=(100, 255),
                 ),
                 "red",
             ),
@@ -340,7 +366,11 @@ class AirDraw:
 
         self.cap = cv2.VideoCapture(0)
 
-        self.postProcessors = [MoveDownFilter(1), BlurFilter(1), FadeFilter(1)]
+        self.postProcessors = [
+        #    MoveDownFilter(1),
+            BlurFilter(3),
+            FadeFilter(2)
+        ]
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 64)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 40)
 
@@ -412,22 +442,36 @@ class AirDraw:
 
             # draw a circle on the feed around the detected colors
             if tracker.x and tracker.y and tracker.radius:
+                circlesize = max(
+                    min(tracker.radius, MAX_MARKER_RADIUS), MIN_MARKER_RADIUS
+                )
                 # ok this is weird, for some reason there are floats involved
                 if self.showFeed:
                     cv2.circle(
                         frame,
                         (int(tracker.x), int(tracker.y)),
-                        int(tracker.radius),
+                        int(circlesize),
                         tracker.trackingColor.bgr,
                         1,
                     )
                 cv2.circle(
                     self.canvas,
                     (int(tracker.x), int(tracker.y)),
-                    int(tracker.radius),
+                    int(circlesize),
                     tracker.trackingColor.bgr,
                     -1,
                 )
+                if tracker.lastX and tracker.lastY:
+                    cv2.line(
+                        self.canvas,
+                        (int(tracker.lastX), int(tracker.lastY)),
+                        (int(tracker.x), int(tracker.y)),
+                        tracker.trackingColor.bgr,
+                        int(circlesize),
+                        cv2.LINE_AA
+                    )
+
+
         self.timers.stop("trackers")
         self.timers.start("post-process")
         for postProcessor in self.postProcessors:
@@ -441,6 +485,7 @@ class AirDraw:
             cv2.imshow("Feed", frame)
             cv2.waitKey(10) & 0xFF
 
+
 def main():
     outputSize = (16, 40)
     effect = AirDraw()
@@ -450,7 +495,7 @@ def main():
         effect.tick()
         outputSurface = cv2.resize(effect.canvas, outputSize)
         cv2.imshow("Matrix Scale", outputSurface)
-        # cv2.imshow("Canvas", effect.canvas)
+        cv2.imshow("Canvas", effect.canvas)
         k = cv2.waitKey(30) & 0xFF
         if k == 27:
             effect.stop()
@@ -458,12 +503,13 @@ def main():
         if not effect.tick_count % 400:
             print(effect.timers.get("loop"))
 
+
 def debug():
-#    cap = cv2.VideoCapture(0)
-#    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 64)
-#    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 40)
-#    _, v = cap.read()
-# originalBGR = v[0][0]
+    #    cap = cv2.VideoCapture(0)
+    #    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 64)
+    #    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 40)
+    #    _, v = cap.read()
+    # originalBGR = v[0][0]
     originalBGR = (255, 75, 0)
     print("originalBGR", originalBGR)
     tmp = np.zeros((400, 640, 3), np.uint8)
@@ -487,16 +533,15 @@ def debug():
         if k == 27:
             break
 
-
-
-    #v = cv2.cvtColor(v, cv2.COLOR_BGR2HSV)
-    #print(v[0][0])
-    #cap.release()
+    # v = cv2.cvtColor(v, cv2.COLOR_BGR2HSV)
+    # print(v[0][0])
+    # cap.release()
     # main()
-    #bgrColor = originalBGR
-    #print('#### bgr to hsv: ', bgrColor, ' --> ', bgrToHsv(bgrColor))
-    #hsvColor = (90, 0.1, 0.3)
-    #print('#### hsv to bgr: ', hsvColor, ' --> ', hsvToBgr(hsvColor))
+    # bgrColor = originalBGR
+    # print('#### bgr to hsv: ', bgrColor, ' --> ', bgrToHsv(bgrColor))
+    # hsvColor = (90, 0.1, 0.3)
+    # print('#### hsv to bgr: ', hsvColor, ' --> ', hsvToBgr(hsvColor))
+
 
 if __name__ == "__main__":
     main()

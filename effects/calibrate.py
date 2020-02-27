@@ -197,9 +197,12 @@ class CalibrationApp:
                 if True:  # Show mask
                     # print( self.trackers[0].trackingColor.hsv)
                     # frame = self.trackers[0].colorMask
-                    frame = cv2.bitwise_and(
+                    colorMask = cv2.bitwise_and(
                         frame, frame, mask=self.trackers[0].colorMask
                     )
+                    frame = cv2.addWeighted(frame, 0.3, colorMask, 0.7, 0)
+
+
                 # lmain.imgtk = imgtk
                 # lmain.configure(image=imgtk)
                 # lmain.after(10, show_frame)
